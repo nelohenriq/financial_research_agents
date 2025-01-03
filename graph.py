@@ -15,6 +15,7 @@ import matplotlib
 from pydantic import SecretStr
 import requests
 from langchain.schema.runnable import RunnableConfig
+from langsmith import traecable
 
 # Load environment variables
 load_dotenv()
@@ -35,6 +36,7 @@ llm = ChatOpenAI(
 )
 
 # Define the tools
+@traecable
 @tool
 def llm_tool(query: Annotated[str, "The query to search for."]):
     """A tool to call an LLM model to search for a query"""
@@ -53,6 +55,7 @@ read_tool, write_tool, list_tool = file_tools
 
 # Python REPL tool
 repl = PythonREPL()
+@traecable
 @tool
 def python_repl_tool(
     code: Annotated[str, "The python code to execute user instructions such as generate CSV or charts."],
@@ -83,6 +86,7 @@ def python_repl_tool(
 tavily_tool = TavilySearchResults(max_results=5)
 
 # Alpha Vantage tool
+@traecable
 def get_natural_gas():
     response = requests.get(
         "https://www.alphavantage.co/query/",
@@ -98,7 +102,7 @@ def get_natural_gas():
         raise ValueError(f"API Error: {data['Error Message']}")
 
     return data
-
+@traecable
 @tool
 def alpha_vantage_tool():
     """A tool to get Natural Gas prices from AlphaVantage API"""
@@ -120,7 +124,7 @@ def get_gdp_data(country_code: str):
         raise ValueError(f"API Error: {data['Error Message']}")
 
     return data["values"]["NGDP_RPCH"][country_code]
-
+@traecable
 @tool
 def gdp_tool(country_code: str):
     """A tool to get the GDP data for a given country code"""
@@ -148,6 +152,7 @@ where "worker_name" is one of {members} or "FINISH". Start by assessing if the q
 """
 
 # Supervisor node
+@traecable
 def supervisor_node(state: AgentState) -> AgentState:
     print("----------------- SUPERVISOR NODE START -----------------\n")
     messages = [
@@ -181,6 +186,8 @@ llm_agent = create_react_agent(
 )
 
 file_agent = create_react_agent(llm, tools=[write_tool])
+
+@traecable
 def file_node(state: AgentState) -> AgentState:
     result = file_agent.invoke(state)
     return AgentState(
@@ -188,11 +195,14 @@ def file_node(state: AgentState) -> AgentState:
         messages=[HumanMessage(content=result["messages"][-1].content, name="file_writer")]
     )
 
+@traecable
 def llm_node(state: AgentState) -> AgentState:
     result = llm_agent.invoke(state)
     return AgentState(next="supervisor", messages=[HumanMessage(content=result["messages"][-1].content, name="llm_node")])
 
 code_agent = create_react_agent(llm, tools=[python_repl_tool])
+
+@traecable
 def code_node(state: AgentState) -> AgentState:
     result = code_agent.invoke(state)
     return AgentState(
@@ -203,16 +213,22 @@ def code_node(state: AgentState) -> AgentState:
 research_agent = create_react_agent(
     llm, tools=[tavily_tool], state_modifier="You are a highly-trained researcher. DO NOT do any math. You are tasked with finding the answer to the user's question. You have access to the following tools: Tavily Search. Use them wisely."
 )
+
+@traecable
 def research_node(state: AgentState) -> AgentState:
     result = research_agent.invoke(state)
     return AgentState(next="researcher", messages=[HumanMessage(content=result["messages"][-1].content, name="researcher")])
 
 alpha_vantage_agent = create_react_agent(llm, tools=[alpha_vantage_tool])
+
+@traecable
 def alpha_vantage_node(state: AgentState) -> AgentState:
     result = alpha_vantage_agent.invoke(state)
     return AgentState(next="alpha_vantage", messages=[HumanMessage(content=result["messages"][-1].content, name="alpha_vantage")])
 
 gdp_agent = create_react_agent(llm, tools=[gdp_tool])
+
+@traecable
 def gdp_node(state: AgentState) -> AgentState:
     result = gdp_agent.invoke(state)
     return AgentState(
@@ -243,6 +259,7 @@ memory = MemorySaver()
 graph = builder.compile(checkpointer=memory)
 
 # Function to generate RunnableConfig
+@traecable
 def get_runnable_config(thread_id: str = "thread-1", run_name: str = "example_run") -> RunnableConfig:
     """
     Generates a RunnableConfig dictionary for the graph.
@@ -270,6 +287,7 @@ def get_runnable_config(thread_id: str = "thread-1", run_name: str = "example_ru
     }
 
 # Main loop
+@traecable
 def main_loop():
     while True:
         user_input = input(">> ")
